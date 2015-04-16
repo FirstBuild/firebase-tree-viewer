@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+   <head>
+      <meta charset="utf-8">
+      <title>FirstBuild Data Tree</title>
+      <link rel="stylesheet" href="jquery-ui.min.css">
+      <script src="external/jquery/jquery.js"></script>
+      <script src="jquery-ui.min.js"></script>
+      <script src="https://cdn.firebase.com/js/client/2.2.3/firebase.js"></script>
+      <link rel="stylesheet" href="dist/themes/default/style.min.css" />
+      <script src="dist/jstree.min.js"></script>
+      <style>
+body { font-size: 62.5%; }
+label, input { display:block; }
+input.text { margin-bottom:12px; width:95%; padding: .4em; }
+fieldset { padding:0; border:0; margin-top:25px; }
+h1 { font-size: 1.2em; margin: .6em 0; }
+div#users-contain { width: 350px; margin: 20px 0; }
+div#users-contain table { margin: 1em 0; border-collapse: collapse; width: 100%; }
+div#users-contain table td, div#users-contain table th { border: 1px solid #eee; padding: .6em 10px; text-align: left; }
+.ui-dialog .ui-state-error { padding: .3em; }
+.validateTips { border: 1px solid transparent; padding: 0.3em; }
+      </style>
+      <script>
+$(function() {
+   var dialog;
+   var form;
+   var name = $( "#name" );
+   var password = $( "#password" );
+   var allFields = $( [] ).add( name ).add( password );
+   var tips = $( ".validateTips" );
+   var fb;
+   var theTree;
+   //var fbURI 'https://firstbuild-sandbox.firebaseio.com/users';
+   //var fbURI = "https://mobius-firstbuild.firebaseio.com/users";
+   var fbURI = "https://firstbuild.firebaseio.com/users";
+
+   name.val("");
+   password.val("");
+
+   function updateTips( t ) {
+      tips
+         .text( t )
+         .addClass( "ui-state-highlight" );
+      setTimeout(function() {
+         tips.removeClass( "ui-state-highlight", 1500 );
+      }, 500 );
+   }
+   function checkLength( o, n, min, max ) {
+      if ( o.val().length > max || o.val().length < min ) {
+         o.addClass( "ui-state-error" );
+         updateTips( "Length of " + n + " must be between " +
+               min + " and " + max + "." );
+         return false;
+      } else {
+         return true;
+      }
+   }
+   function checkRegexp( o, regexp, n ) {
+      if ( !( regexp.test( o.val() ) ) ) {
+         o.addClass( "ui-state-error" );
+         updateTips( n );
+         return false;
+      } else {
+         return true;
+      }
+   }
+
+   function printData(obj) {
+      for (var key in obj) {
+         if (typeof(obj[key]) == "object") {
+            console.log(key + ": {");
+            printData(obj[key]);
+            console.log("}");
+         } else {
+            console.log(key + ": " + obj[key]);
+         }
+      }
+   }
+   
+   function treeify(obj) {
+      var tree = [];
+      for (var key in obj) {
+         if (typeof(obj[key]) == "object") {
+            tree.push({
+               'text': key,
+               'state' : {
+                  'opened' : true
+               },
+               'children' : treeify(obj[key])
+            });
+         } else {
+            tree.push({
+               'text': key + ": " + obj[key],
+               'state' : {
+                  'opened' : true
+               }
+            });
+         }
+      }
+      return tree;
+   }
+
+   function oldShowTree(obj) {
+      var tree = treeify(obj);
+      $('#object-tree').jstree({ 
+         'core' : {
+            'check_callback' : true,
+            'data' : tree
+         },
+         plugins: ["themes", "json_data", "ui", "Select", "types", "crrm"]
+      });
+   }
+
+   function createTree() {
+      $('#object-tree').jstree({ 
+         'core' : {
+            'check_callback' : true
+         },
+         plugins: ["themes", "json_data", "ui", "Select", "types", "crrm"]
+      });
+   }
+
+   function showTree(obj) {
+      var tree = treeify(obj);
+      $('#object-tree').jstree(true).settings.core.data = tree;
+      $('#object-tree').jstree(true).refresh();
+   }
+
+   function processData(authData) {
+      console.log("Login name: " + authData.uid);
+      $("#userId").val(authData.uid);
+      createTree();
+      console.log("Path: " + fb.toString());
+      fb.child(authData.uid).on('value', function(snap) {
+         console.log("Got new data.");
+         showTree(snap.val());
+      },
+      function(error) {
+         if (fb) {
+            if (fb.getAuth) {
+               if (fb.getAuth()) {
+                  alert("Error getting data.\r\n" + error);
+               }
+            }
+         }
+      });
+   }
+   
+   function firebaseLogin(name, password) {
+      logout();
+      fb = new Firebase(fbURI);
+      fb.onAuth(function(authData) {
+         console.log("onAuth fired.");
+         if (authData == null) {
+            console.log("Auth data was null.");
+         }
+         if (authData) {
+            processData(authData);
+         } else {
+            console.log("authData was empty.");
+         }
+      });
+      fb.authWithPassword( {
+         "email": name,
+         "password": password
+      },
+      function(error, authData) {
+         if(error) {
+            alert("Login failed!\nCheck the credentials that you entered.");
+            $( "#name" ).val(name);
+            $( "#password" ).val(password);
+            dialog.dialog( "open" );
+         } else {
+         }
+      });
+   }
+
+   function onGoogleLoginSelected() {
+      logout();
+      console.log("Attempting to login via Google OAuth.");
+      fb = new Firebase(fbURI);
+      fb.onAuth(function(authData) {
+         console.log("onAuth fired for Google Auth.");
+         if (authData == null) {
+            console.log("Auth data was null.");
+         }
+         if (authData) {
+            processData(authData);
+         } else {
+            console.log("authData is missing.");
+         }
+      });
+      fb.authWithOAuthRedirect("google", function(error) {
+         if (error) {
+            console.log("Login via Google failed!", error);
+         } else {
+            // We'll never get here, as the page will redirect on success.
+         }
+      });
+   }
+
+   function onLogin() {
+      var valid = true;
+      console.log("onLogin fired.");
+      allFields.removeClass( "ui-state-error" );
+      valid = valid && checkLength( name, "username", 1, 255 );
+      valid = valid && checkLength( password, "password", 1, 255 );
+      if ( valid ) {
+         firebaseLogin(name.val(), password.val());
+         dialog.dialog( "close" );
+      }
+      return valid;
+   }
+
+   function logout() {
+      if (fb) {
+         if (fb.off) {
+            fb.off('value');
+         }
+         if (fb.unauth) {
+            fb.unauth();
+         }
+      }
+      $.jstree.destroy();
+      return;
+      fb.onAuth(function(authData) {
+         console.log("onAuth fired for logout.");
+         if (authData == null) {
+            console.log("Auth data was null.");
+         }
+         fb.unauth();
+      });
+   }
+
+   dialog = $( "#dialog-form" ).dialog({
+      autoOpen: false,
+      height: 300,
+      width: 350,
+      modal: true,
+      buttons: {
+         "Login": onLogin,
+         Cancel: function() {
+            logout();
+            dialog.dialog( "close" );
+         },
+         "Login with Google+": function() {
+            dialog.dialog( "close" );
+            onGoogleLoginSelected();
+         }
+      },
+      close: function() {
+         form[ 0 ].reset();
+         allFields.removeClass( "ui-state-error" );
+      }
+   });
+
+   form = dialog.find( "form" ).on( "submit", function( event ) {
+      event.preventDefault();
+      onLogin();
+   });
+
+   console.log("Location: " + location);
+   
+   fb = new Firebase(fbURI);
+   fb.onAuth(function(authData) {
+      console.log("onAuth fired on page load.");
+      if (authData == null) {
+         console.log("Auth data was null.");
+      }
+      if (authData) {
+         console.log("authData was valid.");
+         processData(authData);
+      } else {
+         console.log("authData was INvalid.");
+      }
+   });
+
+   $("#loginButton").button();
+   $("#logoutButton").button();
+
+   $("#loginButton").click(function (evt) {
+      dialog.dialog( "open" );
+   });
+   $("#logoutButton").click(function (evt) {
+      logout();
+   });
+
+});
+      </script>
+   </head>
+   <body>
+      <div id="buttonTray">
+         <div id="loginButton">
+            Login
+         </div>
+         <div id="logoutButton">
+            Logout
+         </div>
+      </div>
+      <div id="dialog-form" title="Firebase Login">
+         <p class="validateTips">All form fields are required.</p>
+         <form>
+            <fieldset>
+               <label for="name">Firebase User</label>
+               <input type="text" name="name" id="name" value="" class="text ui-widget-content ui-corner-all">
+               <label for="password">Firebase Pass</label>
+               <input type="password" name="password" id="password" value="" class="text ui-widget-content ui-corner-all">
+               <!-- Allow form submission with keyboard without duplicating the dialog button -->
+               <input type="submit" tabindex="-1" style="position:absolute; top:-1000px">
+            </fieldset>
+         </form>
+      </div>
+      <div id="divUserID">
+               <label for="userId">User ID</label>
+               <input type="text" name="userId" id="userId" value="" class="text ui-widget-content ui-corner-all" style="width:300px">
+      </div>
+      <div id="object-tree">
+      </div>
+   </body>
+</html>
