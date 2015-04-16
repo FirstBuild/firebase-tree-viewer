@@ -9,7 +9,7 @@ sudo node server.js
 
 To see your data in firebase, open a browswer and go this URL:
 
-http://localhost:3000
+(http://localhost:3000)
 
 Currently the following login methods are supported
 
